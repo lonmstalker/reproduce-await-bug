@@ -1,0 +1,11 @@
+server:
+  port: 8080
+
+app:
+  serviceOneUrl: http://localhost:8082/service-one
+  serviceTwoUrl: http://localhost:8082/service-two
+  maxRequestPageSize: 50.0
+
+logging:
+  level:
+    root: ERROR
