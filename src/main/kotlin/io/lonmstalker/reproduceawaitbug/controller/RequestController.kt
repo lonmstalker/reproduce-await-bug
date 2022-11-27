@@ -6,6 +6,7 @@ import io.lonmstalker.reproduceawaitbug.service.MergeService
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
+import reactor.core.publisher.Mono
 
 @RestController
 class RequestController(
@@ -15,4 +16,8 @@ class RequestController(
     @PostMapping("/suspend-call")
     suspend fun suspendCallTwoServices(@RequestBody requestDto: RequestDto): List<MergeResponse> =
         this.mergeService.suspendCallTwoServices(requestDto)
+
+    @PostMapping("/flux-call")
+    fun fluxCallTwoServices(@RequestBody requestDto: RequestDto): Mono<List<MergeResponse>> =
+        this.mergeService.fluxCallTwoServices(requestDto)
 }

@@ -27,6 +27,7 @@ import java.util.concurrent.ThreadLocalRandom
 import java.util.stream.Collectors
 import java.util.stream.IntStream
 
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @SpringBootTest(
     classes = [ReproduceAwaitBugApplication::class],
     webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT
@@ -42,20 +43,20 @@ class SuspendCallTest {
 
     private lateinit var wireMockServer: WireMockServer
 
-    @BeforeEach
+    @BeforeAll
     fun startWiremock() {
         wireMockServer = WireMockServer(8082)
         wireMockServer.start()
         configureFor("localhost", 8082)
     }
 
-    @AfterEach
+    @AfterAll
     fun stopWiremock() {
         this.wireMockServer.stop()
     }
 
     @Test
-    fun should_lost_data() {
+    fun should_suspend_call() {
         StepVerifier
             .create(
                 Flux
@@ -64,7 +65,7 @@ class SuspendCallTest {
                     .flatMap {
                         Mono.fromRunnable<Void> {
                             println("------------------------------call service number=$it------------------------------")
-                            this.oneCallService()
+                            this.oneCallService("/suspend-call")
                         }
                     }
             )
@@ -72,7 +73,25 @@ class SuspendCallTest {
             .verifyComplete()
     }
 
-    fun oneCallService() {
+    @Test
+    fun should_flux_call() {
+        StepVerifier
+            .create(
+                Flux
+                    .range(0, 5)
+                    .publishOn(Schedulers.boundedElastic())
+                    .flatMap {
+                        Mono.fromRunnable<Void> {
+                            println("------------------------------call service number=$it------------------------------")
+                            this.oneCallService("/flux-call")
+                        }
+                    }
+            )
+            .thenAwait(Duration.ofSeconds(10))
+            .verifyComplete()
+    }
+
+    fun oneCallService(url: String) {
         val generatedIds = IntStream
             .range(0, 250)
             .mapToObj { UUID.randomUUID() }
@@ -86,7 +105,7 @@ class SuspendCallTest {
 
         webTestClient
             .post()
-            .uri("/suspend-call")
+            .uri(url)
             .bodyValue(
                 RequestDto(
                     itemsPerPage = 250,
@@ -99,8 +118,13 @@ class SuspendCallTest {
             .is2xxSuccessful
             .expectBody(object : ParameterizedTypeReference<List<MergeResponse>>() {})
             .consumeWith {
-                Assertions.assertNotNull(it.responseBody)
-                Assertions.assertEquals(250, it.responseBody!!.size)
+                Assertions.assertNotNull(it.responseBody, "full lost data")
+                Assertions.assertEquals(250, it.responseBody!!.size, "lost data")
+                // check order after sorting
+                val responseBody = it.responseBody!!
+                for(i in 0 until generatedIds.size) {
+                    Assertions.assertEquals(generatedIds[i], responseBody[i].id, "bad order")
+                }
             }
     }
 
