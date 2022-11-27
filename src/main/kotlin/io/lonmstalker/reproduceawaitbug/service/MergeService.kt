@@ -67,7 +67,7 @@ class MergeService(
                  */
                 LOGGER.info("responseEmployees2 after addAll='{}'", responseEmployees2.size)
             }
-            if (response != null && response.size < neededPageSize) {
+            if (!this.shouldContinueBatch(response, neededPageSize)) {
                 break
             }
         }
@@ -104,7 +104,7 @@ class MergeService(
                 response.forEach { responseEmployees1[it.id] = it }
                 LOGGER.info("responseEmployees1 after addAll='{}'", responseEmployees1.size)
             }
-            if (response != null && response.size < neededPageSize) {
+            if (!this.shouldContinueBatch(response, neededPageSize)) {
                 break
             }
         }
@@ -118,7 +118,6 @@ class MergeService(
         pageNum: Int,
         serviceOneMustGetAll: Boolean
     ): Mono<LinkedHashMap<UUID, EmployeeServiceTwo>> {
-        val responseEmployees2 = this.createNeededLinkedHashSet<UUID, EmployeeServiceTwo>(userIdCount)
         val pageCount = this.calculatePageCount(userIdCount)
         val neededPageSize = this.calculatePageSize(pageCount, userIdCount)
         val pageNumber = this.calculatePageNum(serviceOneMustGetAll, pageNum)
@@ -130,7 +129,7 @@ class MergeService(
         )
         return Flux.range(pageNumber, pageCount)
             .concatMap { currentPage -> this.requestService.correctCallServiceTwo(currentPage, neededPageSize) }
-            .takeWhile { response -> response != null && response.size >= neededPageSize }
+            .takeWhile { response -> this.shouldContinueBatch(response, neededPageSize) }
             .collectList()
             .map { fullList ->
                 this.createNeededLinkedHashSet<UUID, EmployeeServiceTwo>(userIdCount)
@@ -161,7 +160,7 @@ class MergeService(
         )
         return Flux.range(pageNumber, pageCount)
             .concatMap { currentPage -> this.requestService.correctCallServiceOne(currentPage, neededPageSize) }
-            .takeWhile { response -> response != null && response.size >= neededPageSize }
+            .takeWhile { response -> this.shouldContinueBatch(response, neededPageSize) }
             .collectList()
             .map { fullList ->
                 this.createNeededLinkedHashSet<UUID, EmployeeServiceOne>(itemsPerPage)
@@ -175,6 +174,9 @@ class MergeService(
             }
             .doOnNext { LOGGER.info(">>>>get count from service one='{}'", it.size) }
     }
+
+    private fun shouldContinueBatch(response: Collection<*>?, neededPageSize: Int) =
+        response != null && response.size >= neededPageSize
 
     private fun serviceOnePageCount(serviceOneMustGetAll: Boolean, itemsPerPage: Int) =
         if (!serviceOneMustGetAll) {
